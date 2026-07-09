@@ -1,4 +1,4 @@
-import { createWorker, type Worker as TesseractWorker } from 'tesseract.js';
+import { createWorker, PSM, type Worker as TesseractWorker } from 'tesseract.js';
 import type { Detector, DetectorFrame, OcrScanResult } from '../../core/types';
 
 export interface TesseractOcrDetectorOptions {
@@ -37,6 +37,9 @@ export class TesseractOcrDetector implements Detector<OcrScanResult> {
   async init(): Promise<void> {
     if (this.worker) return;
     this.worker = await createWorker(this.language);
+    await this.worker.setParameters({
+      tessedit_pageseg_mode: PSM.SINGLE_LINE, // or SINGLE_WORD / SPARSE_TEXT
+    });
   }
 
   async detect(frame: DetectorFrame): Promise<OcrScanResult | null> {
