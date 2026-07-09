@@ -29,8 +29,8 @@ const DEFAULT_CONSTRAINTS: MediaTrackConstraints = {
   facingMode: { ideal: 'environment' },
   // Deliberately modest - detection doesn't need full sensor resolution, and
   // requesting less keeps per-frame processing (and battery use) down on phones.
-  width: { ideal: 1280 },
-  height: { ideal: 720 },
+  width: { ideal: 1920 },
+  height: { ideal: 1080 },
 };
 
 /**
