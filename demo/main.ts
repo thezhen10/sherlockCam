@@ -32,7 +32,7 @@ const thresholdToggle = document.querySelector<HTMLInputElement>('#threshold-tog
 const scanner = new CameraScanner({
   videoElement,
   detectors: [new ZxingBarcodeDetector({ tryHarder: true }), new TesseractOcrDetector({ language: 'eng' })],
-  detectionIntervalMs: 25,
+  detectionIntervalMs: 1,
   frameWidth: 2560,
   frameHeight: 1440,
   roi: { widthFraction: 0.75, heightFraction: 0.5 },
