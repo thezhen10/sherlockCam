@@ -29,6 +29,12 @@ const grayscaleToggle = document.querySelector<HTMLInputElement>('#grayscale-tog
 const contrastToggle = document.querySelector<HTMLInputElement>('#contrast-toggle')!;
 const thresholdToggle = document.querySelector<HTMLInputElement>('#threshold-toggle')!;
 
+const detectorIndicators = new Map(
+  Array.from(document.querySelectorAll<HTMLElement>('.detector-indicator')).map(
+    (indicator) => [indicator.dataset.detectorId, indicator] as const,
+  ),
+);
+
 const scanner = new CameraScanner({
   videoElement,
   detectors: [new ZxingBarcodeDetector({ tryHarder: true }), new TesseractOcrDetector({ language: 'eng' })],
@@ -83,6 +89,13 @@ scanner.on('frame', (frame) => {
     debugCanvas.height = frame.height;
   }
   debugCtx.putImageData(frame.imageData, 0, 0);
+});
+
+// Lights up a detector's dot while it's actively processing a frame - makes
+// it obvious when a slower detector (e.g. Tesseract) is the one taking time
+// on a given tick, rather than that being invisible between state changes.
+scanner.on('detectoractivity', ({ detectorId, busy }) => {
+  detectorIndicators.get(detectorId)?.classList.toggle('busy', busy);
 });
 
 function readPreprocessing() {

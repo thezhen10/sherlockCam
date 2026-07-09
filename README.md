@@ -63,6 +63,7 @@ scanner.on('detect', (result) => {
   game.handleScanResult(result);
 });
 scanner.on('frame', (frame) => { /* the exact (preprocessed) frame handed to detectors - use for diagnostics */ });
+scanner.on('detectoractivity', ({ detectorId, busy }) => { /* fires busy:true then busy:false around each detector's detect() call - e.g. to show "Tesseract is busy" */ });
 scanner.on('error', (error) => { /* camera/detector failures */ });
 
 await scanner.start();   // must be called from a user gesture on iOS
@@ -166,6 +167,13 @@ To see exactly what the detectors receive after cropping and preprocessing,
 listen to the `frame` event - the demo paints it into a small "Detector input"
 panel (`demo/main.ts`), which is the fastest way to tell a blur/lighting/crop
 problem apart from a detector-tuning one.
+
+To see *which* detector is taking the time on a given tick (useful since
+slower detectors like Tesseract OCR can visibly be the bottleneck), listen to
+`detectoractivity` - it fires `{ detectorId, busy: true }` right before a
+detector's `detect()` is called and `{ detectorId, busy: false }` once it
+resolves (or throws). The demo shows this as a small busy dot per detector
+next to the "Detector input" panel.
 
 ## Library choices and alternatives considered
 

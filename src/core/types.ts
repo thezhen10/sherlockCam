@@ -122,12 +122,27 @@ export interface CameraScannerOptions {
   torch?: boolean;
 }
 
+/**
+ * Payload for the `detectoractivity` event - fired when a detector starts
+ * (`busy: true`) and again when it finishes (`busy: false`) processing a
+ * frame. Useful for showing a per-detector busy indicator - e.g. slower
+ * detectors like Tesseract OCR can visibly be "thinking" for a noticeable
+ * chunk of each detection tick, which isn't obvious from `frame`/`detect`
+ * alone.
+ */
+export interface DetectorActivityEvent {
+  detectorId: string;
+  busy: boolean;
+}
+
 export interface ScannerEventMap {
   statechange: ScannerState;
   detect: ScanResult;
   error: Error;
   /** Emitted every detection tick with the exact (preprocessed) frame handed to detectors. Useful for diagnostics. */
   frame: DetectorFrame;
+  /** Emitted when each detector starts/finishes processing a frame. See DetectorActivityEvent. */
+  detectoractivity: DetectorActivityEvent;
   // Index signature so this satisfies EventEmitter's generic constraint.
   [key: string]: unknown;
 }

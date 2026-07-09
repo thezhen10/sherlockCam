@@ -38,7 +38,7 @@ export class TesseractOcrDetector implements Detector<OcrScanResult> {
     if (this.worker) return;
     this.worker = await createWorker(this.language);
     await this.worker.setParameters({
-      tessedit_pageseg_mode: PSM.SINGLE_LINE, // or SINGLE_WORD / SPARSE_TEXT
+      tessedit_pageseg_mode: PSM.SPARSE_TEXT, // or SINGLE_WORD / SPARSE_TEXT
     });
   }
 

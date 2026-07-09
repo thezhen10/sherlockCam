@@ -169,7 +169,15 @@ export class CameraScanner extends EventEmitter<ScannerEventMap> {
       this.emit('frame', frame);
 
       for (const detector of this.detectors) {
-        const result = await detector.detect(frame);
+        this.emit('detectoractivity', { detectorId: detector.id, busy: true });
+        let result: ScanResult | null;
+        try {
+          result = await detector.detect(frame);
+        } finally {
+          // Always emitted, even if detect() throws, so a busy indicator
+          // never gets stuck "on" after a detector error.
+          this.emit('detectoractivity', { detectorId: detector.id, busy: false });
+        }
         // A dismiss/stop may have happened while this detector was running.
         if (this.state !== 'scanning') return;
         if (result) {

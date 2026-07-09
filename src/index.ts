@@ -6,6 +6,7 @@ export type { FrameGrabberOptions } from './core/FrameGrabber';
 export type {
   CameraScannerOptions,
   Detector,
+  DetectorActivityEvent,
   DetectorFrame,
   PreprocessingOptions,
   RegionOfInterest,

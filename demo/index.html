@@ -101,6 +101,41 @@
         border-radius: 4px;
       }
 
+      /*
+       * Per-detector busy indicators - lit up between a detector's
+       * `detectoractivity` busy:true and busy:false events (CameraScanner).
+       * Slower detectors (e.g. Tesseract OCR) can visibly stay "busy" for a
+       * noticeable chunk of a tick, which isn't obvious just from watching
+       * the state label.
+       */
+      #detector-activity {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 6px;
+      }
+
+      .detector-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        opacity: 0.8;
+      }
+
+      .detector-indicator .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4b5563;
+        transition: background-color 100ms ease;
+      }
+
+      .detector-indicator.busy .dot {
+        background: #facc15;
+        box-shadow: 0 0 6px 1px rgba(250, 204, 21, 0.7);
+      }
+
       #toggles {
         display: flex;
         flex-wrap: wrap;
@@ -187,6 +222,14 @@
         <div id="debug-panel">
           <span>Detector input</span>
           <canvas id="debug-canvas" width="160" height="120"></canvas>
+          <div id="detector-activity">
+            <span class="detector-indicator" data-detector-id="zxing-barcode">
+              <span class="dot"></span> ZXing
+            </span>
+            <span class="detector-indicator" data-detector-id="tesseract-ocr">
+              <span class="dot"></span> Tesseract
+            </span>
+          </div>
         </div>
       </div>
 
