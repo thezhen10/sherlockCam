@@ -30,11 +30,19 @@ export interface BarcodeScanResult {
   timestamp: number;
 }
 
+export interface CharacterScanResult {
+  type: 'character';
+  detectorId: string;
+  character: string;
+  confidence: number;
+  timestamp: number;
+}
+
 /**
  * The payload handed back to the consuming app/game. Add new variants here
  * (and to the union) when adding new detector types.
  */
-export type ScanResult = OcrScanResult | BarcodeScanResult;
+export type ScanResult = OcrScanResult | BarcodeScanResult | CharacterScanResult;
 
 /**
  * A single captured camera frame, already downscaled and drawn to a canvas,

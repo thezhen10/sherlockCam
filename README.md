@@ -1,8 +1,9 @@
 # sherlockCam
 
 A framework-agnostic camera scanning engine for the web: point a camera at
-something, detect it (OCR, barcode/QR, or any custom detector you add), pause,
-and wait for an explicit dismissal before scanning resumes.
+something, detect it (barcode/QR, closed-set character classification, OCR,
+or any custom detector you add), pause, and wait for an explicit dismissal
+before scanning resumes.
 
 This library only does capture + detection + state management. It does not
 render any UI - it's meant to be embedded as a component inside a larger
@@ -12,9 +13,9 @@ app/game, which decides what to show and how to react to a detection.
 
 - **No framework lock-in.** Core is plain TypeScript. No React/Next.js
   dependency, so it can be dropped into any game/app stack.
-- **Pluggable detectors.** OCR and barcode detection are just two
-  implementations of one `Detector` interface. Add a new detector (face,
-  custom object model, etc.) without touching the core engine.
+- **Pluggable detectors.** Character classification, barcode detection, and
+  OCR are just implementations of one `Detector` interface. Add a new
+  detector (face, custom object model, etc.) without touching the core engine.
 - **Explicit state machine.** "Player must dismiss before scanning resumes"
   is enforced structurally (see `src/core/StateMachine.ts`), not by convention.
 - **Mobile-first.** Built assuming this runs in a mobile browser/webview, not
@@ -32,7 +33,9 @@ src/
     CameraScanner.ts     public orchestrator: wires camera + detectors + state machine together
   detectors/
     ocr/
-      TesseractOcrDetector.ts    OCR via Tesseract.js
+      TesseractOcrDetector.ts           open-ended OCR via Tesseract.js (kept available)
+    character/
+      TensorflowCharacterDetector.ts    closed-set character classifier via TensorFlow.js
     barcode/
       ZxingBarcodeDetector.ts    Barcode/QR via zxing-wasm, run in a Web Worker
       zxing.worker.ts            the worker itself
@@ -40,16 +43,30 @@ src/
     EventEmitter.ts      tiny typed pub/sub, no dependency
   index.ts               public exports
 demo/                    minimal harness for manual testing on a real device (not shipped in dist/)
+  public/models/character-classifier/   drop Teachable Machine TF.js export here
 ```
 
 ## Core API
 
 ```ts
-import { CameraScanner, TesseractOcrDetector, ZxingBarcodeDetector } from 'sherlock-cam';
+import {
+  CameraScanner,
+  TensorflowCharacterDetector,
+  ZxingBarcodeDetector,
+  // TesseractOcrDetector, // still exported - swap back in for open-ended OCR
+} from 'sherlock-cam';
 
 const scanner = new CameraScanner({
   videoElement,                                  // an existing <video> in the DOM
-  detectors: [new ZxingBarcodeDetector(), new TesseractOcrDetector()],
+  detectors: [
+    new ZxingBarcodeDetector(),
+    new TensorflowCharacterDetector({
+      modelUrl: '/models/character-classifier/model.json',
+      labels: ['A', 'B', 'C'], // must match metadata.json label order exactly
+      inputSize: 224,         // Teachable Machine default
+      minConfidence: 0.9,
+    }),
+  ],
   detectionIntervalMs: 400,                      // throttle - see Performance notes
   roi: { widthFraction: 0.75, heightFraction: 0.5 }, // see Region of interest, below
   preprocessing: { grayscale: false, contrastStretch: false, threshold: false }, // see Preprocessing
@@ -59,11 +76,13 @@ const scanner = new CameraScanner({
 
 scanner.on('statechange', (state) => { /* 'idle' | 'starting' | 'scanning' | 'detected' | 'awaiting_dismissal' | 'stopped' | 'error' */ });
 scanner.on('detect', (result) => {
-  // result: { type: 'ocr', text, confidence, ... } | { type: 'barcode', format, value, ... }
+  // result: { type: 'character', character, confidence, ... }
+  //       | { type: 'barcode', format, value, ... }
+  //       | { type: 'ocr', text, confidence, ... }  // if using TesseractOcrDetector
   game.handleScanResult(result);
 });
 scanner.on('frame', (frame) => { /* the exact (preprocessed) frame handed to detectors - use for diagnostics */ });
-scanner.on('detectoractivity', ({ detectorId, busy }) => { /* fires busy:true then busy:false around each detector's detect() call - e.g. to show "Tesseract is busy" */ });
+scanner.on('detectoractivity', ({ detectorId, busy }) => { /* fires busy:true then busy:false around each detector's detect() call */ });
 scanner.on('error', (error) => { /* camera/detector failures */ });
 
 await scanner.start();   // must be called from a user gesture on iOS
@@ -189,16 +208,63 @@ next to the "Detector input" panel.
   detected" across ZXing's own issue tracker and various write-ups - it
   makes the decoder attempt multiple rotations/orientations before giving up
   on a frame, at the cost of extra (still off-main-thread) CPU time per tick.
-- **OCR: Tesseract.js.** Mature, well-documented, works everywhere. It's
-  larger and slower than newer ONNX/PaddleOCR-based options
-  (`ppu-paddle-ocr`, `client-side-ocr`, `@ocr-web/core`), which are worth
-  evaluating later if OCR speed/accuracy becomes a bottleneck - swapping
-  the implementation only means writing a new `Detector`, not touching the
-  core engine.
+- **Character classification: TensorFlow.js** (`TensorflowCharacterDetector`).
+  For the use case of recognizing a single known character painted on a wall
+  at a fixed distance, a closed-set image classifier is a better fit than
+  open-ended OCR: smaller model, faster per-frame inference, and trained on
+  the exact visual appearance you care about. Train/export via Google
+  Teachable Machine (or any TF.js Layers model) and drop the files under
+  `demo/public/models/character-classifier/` - see
+  [Character classifier (Teachable Machine)](#character-classifier-teachable-machine).
+- **OCR: Tesseract.js** (`TesseractOcrDetector`). Still exported and available
+  as a drop-in for open-ended text recognition (arbitrary words/lines, unknown
+  fonts). The demo currently uses the TF character detector instead; uncomment
+  `TesseractOcrDetector` in `demo/main.ts` to swap back. Larger/slower than a
+  narrow classifier, and single-character accuracy is a known weak spot -
+  worth keeping for general text, not as the primary path for fixed glyphs.
 - **No AR/3D rendering library** (AR.js, MindAR, WebXR) - out of scope per
   current requirements (no visual overlay needed). If that changes, it would
   plug in as a separate rendering layer alongside, not instead of, this
   engine.
+
+## Character classifier (Teachable Machine)
+
+`TensorflowCharacterDetector` loads a TensorFlow.js Layers model and classifies
+each ROI crop as one of a fixed set of labels. It does **not** locate the
+character in the frame - the player aims the camera so the glyph falls inside
+the ROI guide (same UX as barcode/OCR).
+
+### Exporting a model
+
+1. Open [Teachable Machine](https://teachablemachine.withgoogle.com/) and
+   create an **Image Project**.
+2. Add one class per character you want to detect. Prefer photos taken at the
+   real 1.5–2m distance, angle, and lighting you expect in play.
+3. Train, then **Export Model -> TensorFlow.js -> Download my model**.
+4. Unzip the download into `demo/public/models/character-classifier/` so that
+   folder contains at least `model.json` and the `*.bin` weight shard(s).
+   Keep `metadata.json` too - it lists the ordered `labels`.
+5. Copy that `labels` array into the `TensorflowCharacterDetector` constructor
+   in `demo/main.ts` (order must match exactly). Update `inputSize` if your
+   export uses something other than 224.
+
+Normalization defaults to Teachable Machine's `minusOneToOne`
+(`(pixel - 127.5) / 127.5`). If you train a custom model with 0–1 scaling,
+pass `normalize: 'zeroToOne'`. Leave the shared `preprocessing` toggles
+**off** unless the training data was generated with the same preprocessing -
+otherwise the live input distribution won't match what the model saw.
+
+### Result shape
+
+```ts
+{
+  type: 'character',
+  detectorId: 'character-tf',
+  character: 'A',
+  confidence: 0.97, // softmax score, 0-1
+  timestamp: 1710000000000,
+}
+```
 
 ## Mobile notes
 
@@ -231,13 +297,14 @@ things from a typical desktop web app:
   try/catch, so on unsupported devices it silently no-ops rather than erroring.
   Autofocus in particular matters because blur is one of the most common causes
   of zero detections.
-- **WASM threading is not assumed.** Both Tesseract.js and `zxing-wasm` can
-  use multi-threaded WASM for extra speed, but that requires
-  `Cross-Origin-Opener-Policy`/`Cross-Origin-Embedder-Policy` response
-  headers that you may not control if this is embedded into someone else's
-  page. This scaffold does not configure those headers, so both detectors
-  run in their safe single-threaded default. Add the headers on your hosting
-  and consult each library's docs if you want to opt into threading.
+- **WASM threading is not assumed.** Tesseract.js, `zxing-wasm`, and
+  TensorFlow.js can all use multi-threaded / SIMD WASM for extra speed, but
+  that typically requires `Cross-Origin-Opener-Policy` /
+  `Cross-Origin-Embedder-Policy` response headers that you may not control if
+  this is embedded into someone else's page. This scaffold does not configure
+  those headers, so detectors run in their safe defaults (TF.js will still
+  prefer WebGL when available). Add the headers on your hosting and consult
+  each library's docs if you want to opt into threading.
 - **Worker bundling** for `zxing.worker.ts` uses the
   `new Worker(new URL('./zxing.worker.ts', import.meta.url))` pattern, which
   Vite, Webpack 5+, and esbuild all support natively. If the consuming app's
@@ -263,7 +330,9 @@ This serves `demo/` with HTTPS enabled (self-signed cert) so you can open it
 on your phone over the same network (Vite will print a `Network:` URL). On
 first load your browser will warn about the self-signed certificate - accept
 it to proceed. Tap **Start scanning**, then point the camera at a QR
-code/barcode or some text.
+code/barcode or a character your TF model was trained on (after dropping the
+Teachable Machine export into `demo/public/models/character-classifier/` -
+see [Character classifier (Teachable Machine)](#character-classifier-teachable-machine)).
 
 If you don't need HTTPS (e.g. testing only on desktop `localhost`), run:
 
@@ -308,10 +377,12 @@ npm run preview
 Since `sherlock-cam` (the library) needs `getUserMedia`, the deployed demo
 still requires camera permission and a user gesture to start - see
 [Mobile notes](#mobile-notes). Worker/WASM loading (`zxing-wasm`,
-Tesseract.js) is bundled by Vite the same way for a Pages build as for local
-dev; verify barcode/OCR scanning still works on the deployed URL, since
-worker/asset paths are one of the few things that can behave differently
-once a non-root base path is involved.
+TensorFlow.js model assets) is bundled/served by Vite the same way for a
+Pages build as for local dev; verify barcode/character scanning still works
+on the deployed URL, since worker/asset paths are one of the few things that
+can behave differently once a non-root base path is involved. The demo uses
+`import.meta.env.BASE_URL` when resolving the character model URL so that
+path stays correct under `/sherlockCam/`.
 
 ### Building the library
 

@@ -1,6 +1,7 @@
 import {
   CameraScanner,
-  TesseractOcrDetector,
+  // TesseractOcrDetector, // kept available - swap back into detectors[] if needed
+  TensorflowCharacterDetector,
   ZxingBarcodeDetector,
   type ScanResult,
 } from '../src/index';
@@ -35,9 +36,23 @@ const detectorIndicators = new Map(
   ),
 );
 
+// Teachable Machine export lives under demo/public/models/character-classifier/.
+// BASE_URL keeps this working for both local `/` and GitHub Pages `/sherlockCam/`.
+// Replace `labels` with the exact ordered list from that export's metadata.json.
+const characterDetector = new TensorflowCharacterDetector({
+  modelUrl: `${import.meta.env.BASE_URL}models/character-classifier/model.json`,
+  labels: ['hampter', 'bowl', 'none'], // TODO: replace with labels from metadata.json
+  inputSize: 224,
+  minConfidence: 0.9,
+});
+
 const scanner = new CameraScanner({
   videoElement,
-  detectors: [new ZxingBarcodeDetector({ tryHarder: true }), new TesseractOcrDetector({ language: 'eng' })],
+  detectors: [
+    new ZxingBarcodeDetector({ tryHarder: true }),
+    characterDetector,
+    // new TesseractOcrDetector({ language: 'eng' }), // swap back in to compare against TF
+  ],
   detectionIntervalMs: 1,
   frameWidth: 2560,
   frameHeight: 1440,
