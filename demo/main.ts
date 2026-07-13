@@ -56,7 +56,7 @@ const scanner = new CameraScanner({
   detectionIntervalMs: 1,
   frameWidth: 2560,
   frameHeight: 1440,
-  roi: { widthFraction: 0.75, heightFraction: 0.5 },
+  roi: { widthFraction: 0.5, heightFraction: 0.5 },
   videoConstraints: {
     width: { ideal: 1920 },
     height: { ideal: 1080 },
