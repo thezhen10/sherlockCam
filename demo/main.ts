@@ -41,7 +41,7 @@ const detectorIndicators = new Map(
 // Replace `labels` with the exact ordered list from that export's metadata.json.
 const characterDetector = new TensorflowCharacterDetector({
   modelUrl: `${import.meta.env.BASE_URL}models/character-classifier/model.json`,
-  labels: ['hampter', 'bowl', 'none'], // TODO: replace with labels from metadata.json
+  labels: ['hampter', 'none'], // TODO: replace with labels from metadata.json
   inputSize: 224,
   minConfidence: 0.4,
   unknownLabel: 'none', // trained background/none class - never treated as a real detection
