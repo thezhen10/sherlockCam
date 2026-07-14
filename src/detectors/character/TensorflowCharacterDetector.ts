@@ -21,6 +21,14 @@ export interface TensorflowCharacterDetectorOptions {
    * Teachable Machine image models use `minusOneToOne` (default).
    */
   normalize?: CharacterNormalizeMode;
+  /**
+   * Predicted label to treat as "nothing detected" rather than a real
+   * result - e.g. a trained 'none'/background class. When the top
+   * prediction matches this label, `detect()` returns `null` regardless of
+   * confidence, so it never triggers the scanner's detected/awaiting_dismissal
+   * flow. Unset by default (no label is treated specially).
+   */
+  unknownLabel?: string;
 }
 
 /**
@@ -43,6 +51,7 @@ export class TensorflowCharacterDetector implements Detector<CharacterScanResult
   private readonly inputSize: number;
   private readonly minConfidence: number;
   private readonly normalize: CharacterNormalizeMode;
+  private readonly unknownLabel: string | undefined;
 
   constructor(options: TensorflowCharacterDetectorOptions) {
     if (!options.modelUrl) {
@@ -58,6 +67,7 @@ export class TensorflowCharacterDetector implements Detector<CharacterScanResult
     this.inputSize = options.inputSize ?? 224;
     this.minConfidence = options.minConfidence ?? 0.9;
     this.normalize = options.normalize ?? 'minusOneToOne';
+    this.unknownLabel = options.unknownLabel;
   }
 
   async init(): Promise<void> {
@@ -109,7 +119,7 @@ export class TensorflowCharacterDetector implements Detector<CharacterScanResult
     }
 
     const character = this.labels[index];
-    if (character === undefined) {
+    if (character === undefined || character === this.unknownLabel) {
       return null;
     }
 

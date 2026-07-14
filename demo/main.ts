@@ -43,7 +43,8 @@ const characterDetector = new TensorflowCharacterDetector({
   modelUrl: `${import.meta.env.BASE_URL}models/character-classifier/model.json`,
   labels: ['hampter', 'bowl', 'none'], // TODO: replace with labels from metadata.json
   inputSize: 224,
-  minConfidence: 0.9,
+  minConfidence: 0.4,
+  unknownLabel: 'none', // trained background/none class - never treated as a real detection
 });
 
 const scanner = new CameraScanner({
