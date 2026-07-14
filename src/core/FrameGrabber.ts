@@ -91,7 +91,17 @@ export class FrameGrabber {
     // Preprocess in place, then write the result back to the canvas so the
     // ImageData (used by the barcode detector) and the canvas (used by the
     // OCR detector) stay in sync - both see the same preprocessed pixels.
+    // A detector that needs to opt out (e.g. a color-trained classifier)
+    // reads rawImageData instead - cloned here *before* mutation, and only
+    // when preprocessing is actually enabled, so the no-preprocessing path
+    // (the common case) pays no extra copy at all.
+    let rawImageData = imageData;
     if (hasAnyPreprocessing(this.preprocessing)) {
+      rawImageData = new ImageData(
+        new Uint8ClampedArray(imageData.data),
+        imageData.width,
+        imageData.height,
+      );
       applyPreprocessing(imageData, this.preprocessing);
       this.ctx.putImageData(imageData, 0, 0);
     }
@@ -99,6 +109,7 @@ export class FrameGrabber {
     return {
       canvas: this.canvas,
       imageData,
+      rawImageData,
       width: drawWidth,
       height: drawHeight,
       timestamp: performance.now(),

@@ -90,9 +90,13 @@ export class TensorflowCharacterDetector implements Detector<CharacterScanResult
     }
 
     const { index, confidence } = tf.tidy(() => {
-      // ImageData is always available on DetectorFrame and works for both
-      // HTMLCanvasElement and OffscreenCanvas sources.
-      const pixels = tf.browser.fromPixels(frame.imageData);
+      // Deliberately reads rawImageData, not imageData: this model is
+      // trained on full-color photos, so it must not receive whatever
+      // shared grayscale/contrast/threshold preprocessing is enabled for
+      // other detectors' benefit (e.g. ZxingBarcodeDetector) - see
+      // FrameGrabber.grab(). rawImageData equals imageData when no
+      // preprocessing is enabled, so this is a no-op in the common case.
+      const pixels = tf.browser.fromPixels(frame.rawImageData);
       const resized = tf.image.resizeBilinear(pixels, [this.inputSize, this.inputSize]);
       const batched = resized.expandDims(0);
       const input =

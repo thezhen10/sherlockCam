@@ -81,7 +81,7 @@ scanner.on('detect', (result) => {
   //       | { type: 'ocr', text, confidence, ... }  // if using TesseractOcrDetector
   game.handleScanResult(result);
 });
-scanner.on('frame', (frame) => { /* the exact (preprocessed) frame handed to detectors - use for diagnostics */ });
+scanner.on('frame', (frame) => { /* frame.imageData is preprocessed, frame.rawImageData never is - use for diagnostics */ });
 scanner.on('detectoractivity', ({ detectorId, busy }) => { /* fires busy:true then busy:false around each detector's detect() call */ });
 scanner.on('error', (error) => { /* camera/detector failures */ });
 
@@ -174,7 +174,17 @@ text regions. They're applied in order (grayscale -> contrastStretch ->
 threshold), and enabling `contrastStretch` or `threshold` implies a grayscale
 result regardless of the `grayscale` flag. The processing runs in place on the
 frame's `ImageData` (`src/core/preprocessing.ts`) and the result is written
-back to the shared canvas, so both detectors see the same preprocessed pixels.
+back to the shared canvas, so ZXing/Tesseract-style detectors see the same
+preprocessed pixels.
+
+A color-trained detector (e.g. `TensorflowCharacterDetector`) should instead
+read `DetectorFrame.rawImageData` - the untouched capture, before any
+preprocessing is applied (identical to `imageData` when no preprocessing is
+enabled, so this is a no-op in the common case). This lets one shared
+`FrameGrabber` serve detectors with conflicting preprocessing needs: ZXing
+can still benefit from grayscale/contrast/threshold toggles aimed at helping
+barcode detection, without that preprocessing corrupting a classifier that
+expects the same full-color distribution it was trained on.
 
 This is deliberately kept to global, parameter-free operations. **Adaptive
 (local) thresholding** - which handles uneven lighting *within* a single frame,

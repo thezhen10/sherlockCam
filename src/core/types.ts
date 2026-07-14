@@ -50,7 +50,16 @@ export type ScanResult = OcrScanResult | BarcodeScanResult | CharacterScanResult
  */
 export interface DetectorFrame {
   canvas: HTMLCanvasElement | OffscreenCanvas;
+  /** Pixels after preprocessing (if any) is applied. What `canvas` reflects. */
   imageData: ImageData;
+  /**
+   * Pixels exactly as captured, before any preprocessing is applied - same
+   * reference as `imageData` when no preprocessing is enabled. Useful for a
+   * detector (e.g. a color-trained classifier) that needs to opt out of
+   * shared grayscale/contrast/threshold preprocessing enabled for other
+   * detectors' benefit.
+   */
+  rawImageData: ImageData;
   width: number;
   height: number;
   timestamp: number;
