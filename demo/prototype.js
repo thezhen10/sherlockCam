@@ -77,12 +77,21 @@ const scanner = new CameraScanner({
 // then derive both the guide overlay and the native-pixel crop from that one value.
 const ROI_EDGE_FRACTION = 0.3;
 
+// Absolute on-screen (CSS px) clamp applied after the fraction above, so the
+// viewfinder doesn't shrink to an unusably small target on tiny containers or
+// balloon past a comfortable aiming size on large ones.
+const ROI_MIN_EDGE_PX = 300;
+const ROI_MAX_EDGE_PX = 500;
+
 /**
  * Sizes a centered square off the smaller on-screen viewfinder dimension, then
  * pushes the matching native-frame fractions into the scanner. Both the guide
  * overlay and the actual detector crop trace back to the same onScreenEdge, so
- * they stay in sync as the container (which shrinks when the dashboard expands)
- * or camera resolution changes.
+ * they stay in sync as the container or camera resolution changes.
+ * #video-container's own size is fixed regardless of #dashboard's
+ * expanded/collapsed state (the dashboard overlays on top rather than
+ * resizing it - see index.html), so no resync is needed on dashboard
+ * expand/collapse, only on real video/window resizes.
  */
 function syncRegionOfInterest() {
   const { videoWidth, videoHeight } = videoElement;
@@ -92,7 +101,8 @@ function syncRegionOfInterest() {
   const containerHeight = videoContainer.clientHeight;
   if (!containerWidth || !containerHeight) return;
 
-  const onScreenEdge = Math.min(containerWidth, containerHeight) * ROI_EDGE_FRACTION;
+  const rawEdge = Math.min(containerWidth, containerHeight) * ROI_EDGE_FRACTION;
+  const onScreenEdge = Math.min(Math.max(rawEdge, ROI_MIN_EDGE_PX), ROI_MAX_EDGE_PX);
 
   roiGuide.style.width = `${(onScreenEdge / containerWidth) * 100}%`;
   roiGuide.style.height = `${(onScreenEdge / containerHeight) * 100}%`;
@@ -108,13 +118,6 @@ function syncRegionOfInterest() {
 videoElement.addEventListener('loadedmetadata', syncRegionOfInterest);
 videoElement.addEventListener('resize', syncRegionOfInterest);
 window.addEventListener('resize', syncRegionOfInterest);
-
-// The dashboard resizing also resizes #video-container (flex: 1 fills whatever
-// #dashboard doesn't take), so the ROI must be re-synced once that transition
-// finishes, not just on window/video resize.
-dashboard.addEventListener('transitionend', (event) => {
-  if (event.propertyName === 'height') syncRegionOfInterest();
-});
 
 // Normalizes whichever ScanResult variant fired, since a match can come from
 // any detector (barcode, character-classifier, or OCR if it's ever added back).

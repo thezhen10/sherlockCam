@@ -17,21 +17,19 @@
       #app {
         position: relative;
         height: 100dvh;
-        display: flex;
-        flex-direction: column;
         overflow: hidden;
       }
 
       /*
-       * Top 2/3 of the screen. flex: 1 (rather than a fixed height) so it
-       * automatically shrinks as #dashboard expands - see #dashboard.expanded
-       * below. min-height: 0 lets flexbox actually shrink it instead of
-       * overflowing.
+       * Top 2/3 of the screen, fixed at 100% minus the *collapsed* dashboard
+       * height regardless of #dashboard.expanded - the camera view never
+       * resizes. #dashboard is positioned separately (see below) and grows
+       * upward as an overlay on top of this when expanded, instead of
+       * squishing it.
        */
       #video-container {
         position: relative;
-        flex: 1;
-        min-height: 0;
+        height: calc(100% - 34dvh);
         overflow: hidden;
       }
 
@@ -96,10 +94,20 @@
        * screen by default and expandable to near-full-screen. All content
        * inside (bubbles, handle) is created by prototype.js - this file only
        * provides the containers and the collapsed/expanded height states.
+       *
+       * Positioned absolutely (rather than a flex sibling of #video-container)
+       * so growing it doesn't resize the camera area: collapsed, it exactly
+       * fills the space #video-container leaves free (no overlap); expanded,
+       * it grows upward past #video-container's fixed lower edge and overlays
+       * on top of the camera feed instead of pushing it up. z-index keeps it
+       * above the camera content, but below #callback-modal.
        */
       #dashboard {
-        position: relative;
-        flex-shrink: 0;
+        position: absolute;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 5;
         height: 34dvh;
         display: flex;
         flex-direction: column;
@@ -162,7 +170,7 @@
         align-items: center;
         justify-content: center;
         padding: 24px;
-        z-index: 3;
+        z-index: 20; /* above #dashboard's z-index: 5, even when expanded */
       }
 
       #callback-modal.visible {
