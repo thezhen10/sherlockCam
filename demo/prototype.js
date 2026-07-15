@@ -20,9 +20,9 @@ const messageLog = document.querySelector('#message-log');
 const callbackModal = document.querySelector('#callback-modal');
 
 // The three one-time targets to scan for. Placeholders - swap in real values.
-const target1 = 'TODO_TARGET_1';
-const target2 = 'TODO_TARGET_2';
-const target3 = 'TODO_TARGET_3';
+const target1 = 'A';
+const target2 = 'B';
+const target3 = 'hampter';
 const targets = { target1, target2, target3 };
 const foundTargets = new Set();
 
