@@ -19,6 +19,29 @@ const dashboardHandle = document.querySelector('#dashboard-handle');
 const messageLog = document.querySelector('#message-log');
 const callbackModal = document.querySelector('#callback-modal');
 
+// Debugging aid: shows the raw value of the most recent detection, so it's
+// visible on-device (e.g. over remote/on-device inspection) without needing
+// to dig through console logs. Fixed to the viewport so it stays visible
+// regardless of dashboard expand/collapse.
+const debugOverlay = document.createElement('div');
+debugOverlay.id = 'debug-overlay';
+debugOverlay.style.cssText = [
+  'position: fixed',
+  'top: 8px',
+  'left: 8px',
+  'z-index: 1000',
+  'padding: 4px 8px',
+  'background: rgba(0, 0, 0, 0.7)',
+  'color: #0f0',
+  'font: 12px monospace',
+  'border-radius: 4px',
+  'pointer-events: none',
+  'max-width: 90vw',
+  'white-space: pre-wrap',
+].join(';');
+debugOverlay.textContent = 'detected: ';
+document.body.appendChild(debugOverlay);
+
 // The three one-time targets to scan for. Placeholders - swap in real values.
 const target1 = 'A';
 const target2 = 'B';
@@ -32,7 +55,7 @@ const characterDetector = new TensorflowCharacterDetector({
   modelUrl: `${import.meta.env.BASE_URL}models/character-classifier/model.json`,
   labels: ['hampter', 'none'], // TODO: replace with labels from metadata.json
   inputSize: 224,
-  minConfidence: 0.4,
+  minConfidence: 0.7,
   unknownLabel: 'none',
 });
 
@@ -174,6 +197,8 @@ scanner.on('detect', (result) => {
   console.log('[detect]', result);
 
   const value = extractScanValue(result);
+  debugOverlay.textContent = `detected: ${value}`;
+
   const matchedKey = Object.keys(targets).find(
     (key) => !foundTargets.has(key) && targets[key] === value,
   );
