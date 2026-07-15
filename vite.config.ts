@@ -1,4 +1,5 @@
 /// <reference types="node" />
+import { resolve } from 'node:path';
 import { defineConfig } from 'vite';
 import basicSsl from '@vitejs/plugin-basic-ssl';
 
@@ -27,6 +28,17 @@ export default defineConfig(({ mode }) => {
       // demo never clobbers the published package output, or vice versa.
       outDir: '../dist-demo',
       emptyOutDir: true,
+      // Vite's default build only bundles <root>/index.html - now that there
+      // are two pages (the target-scan prototype at index.html, and the full
+      // detector-comparison harness moved to demo.html), both need to be
+      // listed explicitly or the second page is silently dropped from the
+      // production build.
+      rollupOptions: {
+        input: {
+          main: resolve(__dirname, 'demo/index.html'),
+          demo: resolve(__dirname, 'demo/demo.html'),
+        },
+      },
     },
     server: {
       host: true, // expose on LAN so a phone can reach it

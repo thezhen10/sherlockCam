@@ -1,0 +1,275 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>sherlockCam scanner demo</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        height: 100%;
+        background: #0b0b0d;
+        color: #eee;
+        font-family: system-ui, sans-serif;
+      }
+
+      #app {
+        position: relative;
+        height: 100dvh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      #video-container {
+        position: relative;
+        flex: 1;
+        min-height: 0; /* let flexbox actually shrink this instead of overflowing */
+        overflow: hidden;
+      }
+
+      video {
+        display: block;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+        background: #000;
+      }
+
+      /*
+       * Visual guide showing the player where to aim - this must stay in
+       * sync with the scanner's actual region-of-interest crop (set
+       * dynamically from JS in main.ts, not hardcoded here) or the guide
+       * would be lying about what's actually being scanned.
+       */
+      #roi-guide {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        border: 3px solid rgba(255, 255, 255, 0.85);
+        border-radius: 12px;
+        /* "Spotlight" effect: a huge shadow spread dims everything outside the box. */
+        box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
+        pointer-events: none;
+      }
+
+      #hud {
+        position: absolute;
+        top: env(safe-area-inset-top, 0);
+        left: 0;
+        right: 0;
+        z-index: 1;
+        padding: 12px 16px;
+        display: flex;
+        justify-content: space-between;
+        gap: 12px;
+        font-size: 14px;
+        text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+      }
+
+      /*
+       * Diagnostics panel: shows the exact (post-crop, post-preprocessing)
+       * frame handed to the detectors. If detection is failing, this is the
+       * first place to look - blurry/dark/mis-cropped here == detectors have
+       * no chance regardless of engine tuning.
+       */
+      #debug-panel {
+        position: absolute;
+        left: 8px;
+        bottom: 8px;
+        z-index: 2;
+        background: rgba(0, 0, 0, 0.6);
+        border-radius: 8px;
+        padding: 6px;
+        pointer-events: none;
+      }
+
+      #debug-panel span {
+        display: block;
+        font-size: 11px;
+        opacity: 0.8;
+        margin-bottom: 4px;
+      }
+
+      #debug-canvas {
+        display: block;
+        width: 160px;
+        height: auto;
+        image-rendering: pixelated;
+        background: #000;
+        border-radius: 4px;
+      }
+
+      /*
+       * Per-detector busy indicators - lit up between a detector's
+       * `detectoractivity` busy:true and busy:false events (CameraScanner).
+       * Slower detectors (e.g. Tesseract OCR) can visibly stay "busy" for a
+       * noticeable chunk of a tick, which isn't obvious just from watching
+       * the state label.
+       */
+      #detector-activity {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        margin-top: 6px;
+      }
+
+      .detector-indicator {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 11px;
+        opacity: 0.8;
+      }
+
+      .detector-indicator .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: #4b5563;
+        transition: background-color 100ms ease;
+      }
+
+      .detector-indicator.busy .dot {
+        background: #facc15;
+        box-shadow: 0 0 6px 1px rgba(250, 204, 21, 0.7);
+      }
+
+      #toggles {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 16px;
+        padding: 0 16px 8px;
+        font-size: 14px;
+      }
+
+      #toggles label {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+
+      #toggles label.disabled {
+        opacity: 0.5;
+      }
+
+      #controls {
+        padding: 16px;
+        padding-bottom: max(16px, env(safe-area-inset-bottom, 0));
+        display: flex;
+        gap: 12px;
+      }
+
+      button {
+        flex: 1;
+        padding: 14px;
+        font-size: 16px;
+        border-radius: 10px;
+        border: none;
+        background: #2563eb;
+        color: white;
+      }
+
+      button:disabled {
+        background: #374151;
+        color: #9ca3af;
+      }
+
+      #callback-modal {
+        position: absolute;
+        inset: 0;
+        background: rgba(0, 0, 0, 0.75);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+
+      #callback-modal.visible {
+        display: flex;
+      }
+
+      #callback-card {
+        background: #111827;
+        border-radius: 16px;
+        padding: 24px;
+        max-width: 360px;
+        width: 100%;
+        text-align: center;
+      }
+
+      #callback-card pre {
+        white-space: pre-wrap;
+        word-break: break-word;
+        text-align: left;
+        background: #000;
+        padding: 12px;
+        border-radius: 8px;
+        font-size: 13px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="hud">
+        <span id="state-label">idle</span>
+      </div>
+
+      <div id="video-container">
+        <video id="camera" autoplay playsinline muted></video>
+        <div id="roi-guide"></div>
+        <div id="debug-panel">
+          <span>Detector input</span>
+          <canvas id="debug-canvas" width="160" height="120"></canvas>
+          <div id="detector-activity">
+            <span class="detector-indicator" data-detector-id="zxing-barcode">
+              <span class="dot"></span> ZXing
+            </span>
+            <span class="detector-indicator" data-detector-id="character-tf">
+              <span class="dot"></span> TF Character
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div id="toggles">
+        <label id="autofocus-label" class="disabled">
+          <input type="checkbox" id="autofocus-toggle" checked disabled />
+          Continuous autofocus
+        </label>
+        <label id="torch-label" class="disabled">
+          <input type="checkbox" id="torch-toggle" disabled />
+          Torch
+        </label>
+        <label>
+          <input type="checkbox" id="grayscale-toggle" />
+          Grayscale
+        </label>
+        <label>
+          <input type="checkbox" id="contrast-toggle" />
+          Contrast stretch
+        </label>
+        <label>
+          <input type="checkbox" id="threshold-toggle" />
+          Threshold
+        </label>
+      </div>
+
+      <div id="callback-modal">
+        <div id="callback-card">
+          <h2>Detected!</h2>
+          <pre id="callback-content"></pre>
+          <button id="dismiss-button">Dismiss &amp; resume scanning</button>
+        </div>
+      </div>
+
+      <div id="controls">
+        <button id="start-button">Start scanning</button>
+        <button id="stop-button" disabled>Stop</button>
+      </div>
+    </div>
+
+    <script type="module" src="./main.ts"></script>
+  </body>
+</html>
