@@ -57,7 +57,7 @@ const scanner = new CameraScanner({
   detectionIntervalMs: 1,
   frameWidth: 2560,
   frameHeight: 1440,
-  roi: { widthFraction: 0.225, heightFraction: 0.4 },
+  // ROI is set dynamically by syncRegionOfInterest() below (viewfinder-space square).
   videoConstraints: {
     width: { ideal: 1920 },
     height: { ideal: 1080 },
@@ -65,15 +65,23 @@ const scanner = new CameraScanner({
   pauseOnHidden: true,
 });
 
+// Fraction of the smaller viewfinder (container) dimension - mirrors html5-qrcode's
+// qrboxFunction(minEdgePercentage) pattern: define the square in on-screen space,
+// then derive both the guide overlay and the native-pixel crop from that one value.
+const ROI_EDGE_FRACTION = 0.3;
+
 /**
- * Sizes the on-screen guide box so it visually matches the actual pixels
- * the scanner crops out (see FrameGrabber.grab()). This is NOT just "75%
- * width, 50% height of the container" - the <video> element is displayed
- * with `object-fit: cover`, which itself crops the native video to fill the
- * container, so we have to reproduce that same math here or the guide would
- * point at the wrong pixels.
+ * Sizes a centered square off the smaller on-screen viewfinder dimension, then
+ * pushes the matching native-frame fractions into the scanner. Both the guide
+ * overlay and the actual detector crop trace back to the same onScreenEdge, so
+ * they stay in sync as the container or camera resolution changes.
+ *
+ * The <video> uses object-fit: cover, so converting viewfinder pixels -> native
+ * camera pixels requires dividing by coverScale (the larger of the two axis
+ * scale factors). Without that, the guide would point at the right place on
+ * screen but FrameGrabber would crop a differently-sized window.
  */
-function updateRoiGuide(): void {
+function syncRegionOfInterest(): void {
   const { videoWidth, videoHeight } = videoElement;
   if (!videoWidth || !videoHeight) return;
 
@@ -81,20 +89,25 @@ function updateRoiGuide(): void {
   const containerHeight = videoContainer.clientHeight;
   if (!containerWidth || !containerHeight) return;
 
-  // object-fit: cover scales the video by whichever axis needs the *larger*
-  // factor to fully cover the container, cropping the overflow on the other axis.
+  // Square edge in on-screen pixels, sized off the smaller viewfinder dimension.
+  const onScreenEdge = Math.min(containerWidth, containerHeight) * ROI_EDGE_FRACTION;
+
+  // Drive the guide directly from viewfinder space.
+  roiGuide.style.width = `${(onScreenEdge / containerWidth) * 100}%`;
+  roiGuide.style.height = `${(onScreenEdge / containerHeight) * 100}%`;
+
+  // Convert the same edge into native camera pixels to drive the actual detector crop.
   const coverScale = Math.max(containerWidth / videoWidth, containerHeight / videoHeight);
-
-  const { widthFraction, heightFraction } = scanner.regionOfInterest;
-  const onScreenRoiWidth = videoWidth * widthFraction * coverScale;
-  const onScreenRoiHeight = videoHeight * heightFraction * coverScale;
-
-  roiGuide.style.width = `${(onScreenRoiWidth / containerWidth) * 100}%`;
-  roiGuide.style.height = `${(onScreenRoiHeight / containerHeight) * 100}%`;
+  const nativeEdge = onScreenEdge / coverScale;
+  scanner.setRegionOfInterest({
+    widthFraction: nativeEdge / videoWidth,
+    heightFraction: nativeEdge / videoHeight,
+  });
 }
 
-videoElement.addEventListener('loadedmetadata', updateRoiGuide);
-window.addEventListener('resize', updateRoiGuide);
+videoElement.addEventListener('loadedmetadata', syncRegionOfInterest);
+videoElement.addEventListener('resize', syncRegionOfInterest);
+window.addEventListener('resize', syncRegionOfInterest);
 
 // Diagnostics: paint the exact (cropped + preprocessed) frame the detectors
 // receive, so it's obvious whether a "no detection" is really a blur/lighting/

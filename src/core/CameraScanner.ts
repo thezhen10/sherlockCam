@@ -88,6 +88,11 @@ export class CameraScanner extends EventEmitter<ScannerEventMap> {
     this.frameGrabber.setPreprocessing(options);
   }
 
+  /** Replace the region of interest. Takes effect on the next detection tick - no restart needed. */
+  setRegionOfInterest(roi: RegionOfInterest): void {
+    this.frameGrabber.setRegionOfInterest(roi);
+  }
+
   /** Must be called from a user gesture on iOS - see Camera.start(). */
   async start(): Promise<void> {
     if (this.state === 'starting' || this.state === 'scanning') return;

@@ -92,6 +92,7 @@ await scanner.destroy(); // full teardown (releases camera + worker + all listen
 
 // Live tuning while scanning (no restart needed):
 scanner.setPreprocessing({ grayscale: true, contrastStretch: true });
+scanner.setRegionOfInterest({ widthFraction: 0.4, heightFraction: 0.4 });
 await scanner.setTorch(true);              // best-effort; no-ops where unsupported
 await scanner.setContinuousAutofocus(true);
 ```
@@ -134,9 +135,21 @@ roi: { widthFraction: 0.75, heightFraction: 0.5 } // default
 This is deliberately **not** smart/content-aware - there's no attempt to
 auto-detect where a barcode or line of text is in the frame. Instead, the
 player aims the camera so their target falls inside this fixed window (the
-demo draws a matching guide overlay - see `demo/main.ts`'s `updateRoiGuide()`
-- so they can see exactly where that window is). This mirrors how virtually
-every barcode-scanner app works: a fixed viewfinder box, not a smart tracker.
+demo draws a matching guide overlay - see `demo/main.ts`'s
+`syncRegionOfInterest()` - so they can see exactly where that window is).
+This mirrors how virtually every barcode-scanner app works: a fixed
+viewfinder box, not a smart tracker.
+
+`roi` fractions are in **native camera pixels**, not CSS/layout pixels. The
+library stays agnostic of how the `<video>` is displayed on screen. For a
+responsive square viewfinder (sized off the smaller on-screen container
+dimension, the same pattern as [html5-qrcode's `qrbox`
+function](https://scanapp.org/blog/2022/01/09/setting-dynamic-qr-box-size-in-html5-qrcode.html)),
+compute the square in viewfinder space in your app, convert it to native
+fractions, and push them live with `scanner.setRegionOfInterest(...)` -
+`demo/main.ts` shows the full recipe, including re-syncing on
+`loadedmetadata`, container `resize`, and the video element's own `resize`
+(camera renegotiation).
 
 Cropping before downscaling (rather than downscaling the whole frame and
 cropping after) matters: it means the region actually being scanned gets the

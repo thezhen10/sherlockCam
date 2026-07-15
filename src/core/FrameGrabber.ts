@@ -30,16 +30,13 @@ export class FrameGrabber {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly targetWidth: number;
   private readonly targetHeight: number;
-  private readonly resolvedRoi: Required<RegionOfInterest>;
+  private resolvedRoi: Required<RegionOfInterest>;
   private preprocessing: PreprocessingOptions;
 
   constructor(options: FrameGrabberOptions = {}) {
     this.targetWidth = options.targetWidth ?? DEFAULT_TARGET_WIDTH;
     this.targetHeight = options.targetHeight ?? DEFAULT_TARGET_HEIGHT;
-    this.resolvedRoi = {
-      widthFraction: clampFraction(options.roi?.widthFraction ?? DEFAULT_ROI_WIDTH_FRACTION),
-      heightFraction: clampFraction(options.roi?.heightFraction ?? DEFAULT_ROI_HEIGHT_FRACTION),
-    };
+    this.resolvedRoi = resolveRoi(options.roi);
     this.preprocessing = options.preprocessing ?? {};
 
     this.canvas = document.createElement('canvas');
@@ -56,6 +53,11 @@ export class FrameGrabber {
   /** The resolved (defaults-applied) region of interest, in native-frame fractions. Read by the demo to draw a matching guide overlay. */
   get roi(): Required<RegionOfInterest> {
     return this.resolvedRoi;
+  }
+
+  /** Replace the region of interest. Takes effect on the next grab() - no restart needed. */
+  setRegionOfInterest(roi: RegionOfInterest): void {
+    this.resolvedRoi = resolveRoi(roi);
   }
 
   /** Replace the preprocessing options applied to each grabbed frame. Takes effect on the next grab(). */
@@ -115,6 +117,13 @@ export class FrameGrabber {
       timestamp: performance.now(),
     };
   }
+}
+
+function resolveRoi(roi?: RegionOfInterest): Required<RegionOfInterest> {
+  return {
+    widthFraction: clampFraction(roi?.widthFraction ?? DEFAULT_ROI_WIDTH_FRACTION),
+    heightFraction: clampFraction(roi?.heightFraction ?? DEFAULT_ROI_HEIGHT_FRACTION),
+  };
 }
 
 function clampFraction(value: number): number {
