@@ -200,9 +200,17 @@ export class CameraScanner extends EventEmitter<ScannerEventMap> {
     }
   }
 
+  /**
+   * State is advanced to 'awaiting_dismissal' *before* emitting 'detect' -
+   * emit() calls listeners synchronously, so a listener that calls
+   * dismiss() directly (e.g. to auto-resume on a non-match) needs the state
+   * to already reflect 'awaiting_dismissal' or dismiss()'s own guard
+   * (`state !== 'awaiting_dismissal'`) rejects the call as a no-op, leaving
+   * the scanner stuck once this method's final setState runs afterward.
+   */
   private handleDetection(result: ScanResult): void {
     this.setState('detected');
-    this.emit('detect', result);
     this.setState('awaiting_dismissal');
+    this.emit('detect', result);
   }
 }

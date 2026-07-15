@@ -168,6 +168,11 @@ function showBlockingModal(text) {
 // scanning.
 
 scanner.on('detect', (result) => {
+  // Prints every detection (match or not) so it's obvious what's actually
+  // being decoded when a target isn't matching - same idea as main.ts's
+  // callback panel, just to the console since this prototype has no debug UI.
+  console.log('[detect]', result);
+
   const value = extractScanValue(result);
   const matchedKey = Object.keys(targets).find(
     (key) => !foundTargets.has(key) && targets[key] === value,
