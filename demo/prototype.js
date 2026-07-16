@@ -46,7 +46,7 @@ let debugOverlayTimeout = null;
 
 // The three one-time targets to scan for. Placeholders - swap in real values.
 const target1 = 'A';
-const target2 = 'B';
+const target2 = 'Passport';
 const target3 = 'hampter';
 const targets = { target1, target2, target3 };
 const foundTargets = new Set();
