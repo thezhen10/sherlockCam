@@ -124,16 +124,21 @@ window.addEventListener('resize', syncRegionOfInterest);
 // Normalizes whichever ScanResult variant fired, since a match can come from
 // any detector (barcode, character-classifier, or OCR if it's ever added back).
 function extractScanValue(result) {
+  let value;
   switch (result.type) {
     case 'barcode':
-      return result.value;
+      value = result.value;
+      break;
     case 'character':
-      return result.character;
+      value = result.character;
+      break;
     case 'ocr':
-      return result.text;
+      value = result.text;
+      break;
     default:
       return null;
   }
+  return typeof value === 'string' ? value.trim() : value;
 }
 
 // --- Chat-style message log -------------------------------------------------
