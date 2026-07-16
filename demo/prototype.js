@@ -41,6 +41,7 @@ debugOverlay.style.cssText = [
 ].join(';');
 debugOverlay.textContent = 'detected: ';
 document.body.appendChild(debugOverlay);
+let debugOverlayTimeout = null;
 
 // The three one-time targets to scan for. Placeholders - swap in real values.
 const target1 = 'A';
@@ -201,6 +202,10 @@ scanner.on('detect', (result) => {
 
   const value = extractScanValue(result);
   debugOverlay.textContent = `detected: ${value}`;
+  clearTimeout(debugOverlayTimeout);
+  debugOverlayTimeout = setTimeout(() => {
+    debugOverlay.textContent = 'detected: ';
+  }, 1000);
 
   const matchedKey = Object.keys(targets).find(
     (key) => !foundTargets.has(key) && targets[key] === value,
