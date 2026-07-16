@@ -13,6 +13,7 @@ const videoElement = document.querySelector('#camera');
 const videoContainer = document.querySelector('#video-container');
 const roiGuide = document.querySelector('#roi-guide');
 const startButton = document.querySelector('#start-button');
+const switchCameraButton = document.querySelector('#switch-camera-button');
 const stateLabel = document.querySelector('#state-label');
 const dashboard = document.querySelector('#dashboard');
 const dashboardHandle = document.querySelector('#dashboard-handle');
@@ -225,12 +226,23 @@ scanner.on('detect', (result) => {
   }
 });
 
+// Enabling switchCameraButton is one-way: once the scanner has reached
+// 'scanning' for the first time (so a real stream/device list exists),
+// it stays enabled - gating on 'scanning' rather than the button's own click
+// avoids racing the still-in-flight initial getUserMedia call.
+let hasScannedOnce = false;
+
 scanner.on('statechange', (state) => {
   stateLabel.textContent = state;
   startButton.classList.toggle(
     'hidden',
     state === 'starting' || state === 'scanning' || state === 'detected' || state === 'awaiting_dismissal',
   );
+
+  if (!hasScannedOnce && state === 'scanning') {
+    hasScannedOnce = true;
+    switchCameraButton.disabled = false;
+  }
 });
 
 scanner.on('error', (error) => {
@@ -240,6 +252,19 @@ scanner.on('error', (error) => {
 
 startButton.addEventListener('click', () => {
   void scanner.start();
+});
+
+// Cycles to the next available camera device on each click. The device list
+// is re-fetched every click rather than cached, since it's cheap and this
+// keeps it correct if the set of cameras ever changes mid-session.
+let cameraIndex = 0;
+
+switchCameraButton.addEventListener('click', async () => {
+  const cameras = await scanner.listCameras();
+  if (cameras.length < 2) return;
+
+  cameraIndex = (cameraIndex + 1) % cameras.length;
+  await scanner.switchCamera(cameras[cameraIndex].deviceId);
 });
 
 window.addEventListener('beforeunload', () => {

@@ -83,6 +83,25 @@ export class CameraScanner extends EventEmitter<ScannerEventMap> {
     await this.camera.setContinuousAutofocus(enabled);
   }
 
+  /**
+   * List available camera devices. Labels/deviceIds are only reliably
+   * populated once camera permission has been granted (i.e. after start()
+   * has resolved at least once) - see MDN's enumerateDevices() docs.
+   */
+  async listCameras(): Promise<MediaDeviceInfo[]> {
+    return this.camera.listCameras();
+  }
+
+  /**
+   * Switch to a specific camera device (from listCameras()) while scanning -
+   * takes effect immediately and persists across future restarts (e.g. the
+   * automatic pause/resume around backgrounding the tab), taking over from
+   * the default back-camera selection. No restart needed.
+   */
+  async switchCamera(deviceId: string): Promise<void> {
+    await this.camera.switchCamera(deviceId);
+  }
+
   /** Replace the per-frame preprocessing options. Takes effect on the next detection tick - no restart needed. */
   setPreprocessing(options: PreprocessingOptions): void {
     this.frameGrabber.setPreprocessing(options);

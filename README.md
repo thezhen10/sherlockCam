@@ -95,6 +95,10 @@ scanner.setPreprocessing({ grayscale: true, contrastStretch: true });
 scanner.setRegionOfInterest({ widthFraction: 0.4, heightFraction: 0.4 });
 await scanner.setTorch(true);              // best-effort; no-ops where unsupported
 await scanner.setContinuousAutofocus(true);
+
+// Switching cameras (also no restart needed):
+const cameras = await scanner.listCameras(); // labels/ids reliable only after start()
+await scanner.switchCamera(cameras[1].deviceId);
 ```
 
 Detection results are a discriminated union (`ScanResult` in `src/core/types.ts`)
@@ -318,6 +322,14 @@ things from a typical desktop web app:
   **Chrome-on-Android only** - iOS Safari does not expose `focusMode` or
   `torch` to web pages at all. Everything is capability-checked and wrapped in
   try/catch, so on unsupported devices it silently no-ops rather than erroring.
+- **Switching cameras** (`scanner.listCameras()` / `scanner.switchCamera()`)
+  defaults to the back camera via `facingMode` until you explicitly switch;
+  from that point on the chosen `deviceId` takes over entirely (the two
+  aren't combined) and persists across the automatic pause/resume around
+  backgrounding the tab, so it doesn't silently revert to the back camera
+  after the app is backgrounded and re-foregrounded. Device labels/ids are
+  only reliably populated once permission has been granted, i.e. after
+  `start()` has resolved at least once.
   Autofocus in particular matters because blur is one of the most common causes
   of zero detections.
 - **WASM threading is not assumed.** Tesseract.js, `zxing-wasm`, and

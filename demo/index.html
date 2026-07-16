@@ -90,6 +90,36 @@
       }
 
       /*
+       * Cycles through available cameras (see switchCamera() wiring in
+       * prototype.js). Disabled until the scanner has reached 'scanning' at
+       * least once - see the statechange handler - since there's nothing to
+       * switch away from before then, and switching too early would race the
+       * initial getUserMedia call.
+       */
+      #switch-camera-button {
+        position: absolute;
+        top: calc(env(safe-area-inset-top, 0) + 8px);
+        right: 8px;
+        z-index: 2;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        border: none;
+        background: rgba(0, 0, 0, 0.5);
+        color: #fff;
+        font-size: 18px;
+        line-height: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #switch-camera-button:disabled {
+        opacity: 0.35;
+        pointer-events: none;
+      }
+
+      /*
        * Bottom dashboard - a chat-style message log, collapsed to ~1/3 of the
        * screen by default and expandable to near-full-screen. All content
        * inside (bubbles, handle) is created by prototype.js - this file only
@@ -217,6 +247,7 @@
         <div id="roi-guide"></div>
         <span id="state-label">idle</span>
         <button id="start-button">Start scanning</button>
+        <button id="switch-camera-button" disabled aria-label="Switch camera">⟳</button>
       </div>
 
       <div id="dashboard">

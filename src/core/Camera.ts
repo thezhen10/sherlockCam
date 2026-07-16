@@ -43,10 +43,12 @@ export class Camera {
   private stream: MediaStream | null = null;
   private wasRunningBeforeHidden = false;
   private readonly videoElement: HTMLVideoElement;
-  private readonly constraints: MediaTrackConstraints;
+  private readonly baseConstraints: MediaTrackConstraints;
   private readonly pauseOnHidden: boolean;
   private continuousAutofocus: boolean;
   private torch: boolean;
+  /** Explicit device selected via switchCamera(), if any - see buildConstraints(). */
+  private activeDeviceId: string | null = null;
 
   private readonly onVisibilityChange = (): void => {
     void this.handleVisibilityChange();
@@ -54,7 +56,7 @@ export class Camera {
 
   constructor(options: CameraOptions) {
     this.videoElement = options.videoElement;
-    this.constraints = { ...DEFAULT_CONSTRAINTS, ...options.constraints };
+    this.baseConstraints = { ...DEFAULT_CONSTRAINTS, ...options.constraints };
     this.pauseOnHidden = options.pauseOnHidden ?? true;
     this.continuousAutofocus = options.continuousAutofocus ?? true;
     this.torch = options.torch ?? false;
@@ -74,28 +76,7 @@ export class Camera {
    */
   async start(): Promise<void> {
     if (this.stream) return;
-
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      video: this.constraints,
-      audio: false,
-    });
-
-    this.videoElement.srcObject = this.stream;
-    // Required on iOS: without playsInline the video is forced fullscreen;
-    // without muted, autoplay is blocked by the browser's autoplay policy.
-    this.videoElement.playsInline = true;
-    this.videoElement.muted = true;
-
-    await this.videoElement.play();
-
-    // Best-effort camera tuning - applied after the stream is live because
-    // capabilities are only known once a track exists. Never fatal.
-    if (this.continuousAutofocus) {
-      await this.applyTrackConstraint({ focusMode: 'continuous' }, 'focusMode');
-    }
-    if (this.torch) {
-      await this.applyTrackConstraint({ torch: true }, 'torch');
-    }
+    await this.acquireStream();
   }
 
   stop(): void {
@@ -108,6 +89,24 @@ export class Camera {
   destroy(): void {
     this.stop();
     document.removeEventListener('visibilitychange', this.onVisibilityChange);
+  }
+
+  /**
+   * Switch to a specific camera device (from listCameras()) while running -
+   * stops the current stream's tracks and opens a new one for that device.
+   * The selection is remembered and takes over from the facingMode default
+   * on every future acquire (including the automatic restart on
+   * visibilitychange), the same way the torch/continuousAutofocus
+   * preferences are - see buildConstraints(). If called before the camera
+   * has ever started, this just records the preference for the next start().
+   */
+  async switchCamera(deviceId: string): Promise<void> {
+    this.activeDeviceId = deviceId;
+    if (!this.stream) return;
+
+    this.stream.getTracks().forEach((track) => track.stop());
+    this.stream = null;
+    await this.acquireStream();
   }
 
   /**
@@ -159,6 +158,54 @@ export class Camera {
   async listCameras(): Promise<MediaDeviceInfo[]> {
     const devices = await navigator.mediaDevices.enumerateDevices();
     return devices.filter((device) => device.kind === 'videoinput');
+  }
+
+  /**
+   * Opens getUserMedia with the current constraints, attaches it to the
+   * video element, and applies best-effort tuning - shared by start() and
+   * switchCamera() so both paths stay identical (and any future track-level
+   * tuning only needs to be added in one place).
+   */
+  private async acquireStream(): Promise<void> {
+    this.stream = await navigator.mediaDevices.getUserMedia({
+      video: this.buildConstraints(),
+      audio: false,
+    });
+
+    this.videoElement.srcObject = this.stream;
+    // Required on iOS: without playsInline the video is forced fullscreen;
+    // without muted, autoplay is blocked by the browser's autoplay policy.
+    this.videoElement.playsInline = true;
+    this.videoElement.muted = true;
+
+    await this.videoElement.play();
+
+    // Best-effort camera tuning - applied after the stream is live because
+    // capabilities are only known once a track exists, and re-applied here
+    // (rather than assumed to carry over) since switchCamera() gives us a
+    // brand new track that starts with none of this tuning. Never fatal.
+    if (this.continuousAutofocus) {
+      await this.applyTrackConstraint({ focusMode: 'continuous' }, 'focusMode');
+    }
+    if (this.torch) {
+      await this.applyTrackConstraint({ torch: true }, 'torch');
+    }
+  }
+
+  /**
+   * facingMode and an explicit deviceId are mutually exclusive - browsers'
+   * handling of specifying both is unreliable/inconsistent. Once a specific
+   * device has been chosen (via switchCamera()), it takes over entirely from
+   * the facingMode default on every subsequent acquire; until then, this
+   * returns the original base constraints unchanged (facingMode included),
+   * preserving the "back camera by default" behavior for the common case
+   * where switchCamera() is never called.
+   */
+  private buildConstraints(): MediaTrackConstraints {
+    if (!this.activeDeviceId) return this.baseConstraints;
+
+    const { facingMode, ...rest } = this.baseConstraints;
+    return { ...rest, deviceId: { exact: this.activeDeviceId } };
   }
 
   private async handleVisibilityChange(): Promise<void> {
