@@ -49,6 +49,8 @@ export class Camera {
   private torch: boolean;
   /** Explicit device selected via switchCamera(), if any - see buildConstraints(). */
   private activeDeviceId: string | null = null;
+  /** Guards against overlapping switchCamera() calls - see switchCamera(). */
+  private isSwitchingCamera = false;
 
   private readonly onVisibilityChange = (): void => {
     void this.handleVisibilityChange();
@@ -92,21 +94,45 @@ export class Camera {
   }
 
   /**
-   * Switch to a specific camera device (from listCameras()) while running -
-   * stops the current stream's tracks and opens a new one for that device.
+   * Switch to a specific camera device (from listCameras()) while running.
    * The selection is remembered and takes over from the facingMode default
    * on every future acquire (including the automatic restart on
    * visibilitychange), the same way the torch/continuousAutofocus
    * preferences are - see buildConstraints(). If called before the camera
    * has ever started, this just records the preference for the next start().
+   *
+   * Acquires the new device's stream *before* releasing the old one, rather
+   * than stopping-then-reacquiring: two physically distinct devices (e.g. a
+   * laptop's built-in webcam plus a USB one) can safely both be briefly open
+   * at once, whereas stopping the old track first and immediately requesting
+   * the new one races the OS/driver's release of the old device - if the new
+   * request lands before that finishes, it throws
+   * `NotReadableError: Could not start video source`. This ordering also
+   * means a failed switch leaves the previous camera running untouched
+   * instead of going dead. Throws (propagating that same error) if the new
+   * device can't be opened; overlapping calls (e.g. the toggle button tapped
+   * twice before the first switch settles) are ignored rather than racing
+   * each other.
    */
   async switchCamera(deviceId: string): Promise<void> {
-    this.activeDeviceId = deviceId;
-    if (!this.stream) return;
+    if (this.isSwitchingCamera) return;
+    this.isSwitchingCamera = true;
 
-    this.stream.getTracks().forEach((track) => track.stop());
-    this.stream = null;
-    await this.acquireStream();
+    const previousDeviceId = this.activeDeviceId;
+    const previousStream = this.stream;
+    this.activeDeviceId = deviceId;
+
+    try {
+      if (!previousStream) return;
+
+      await this.acquireStream();
+      previousStream.getTracks().forEach((track) => track.stop());
+    } catch (error) {
+      this.activeDeviceId = previousDeviceId;
+      throw error;
+    } finally {
+      this.isSwitchingCamera = false;
+    }
   }
 
   /**

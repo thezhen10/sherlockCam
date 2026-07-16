@@ -260,11 +260,19 @@ startButton.addEventListener('click', () => {
 let cameraIndex = 0;
 
 switchCameraButton.addEventListener('click', async () => {
-  const cameras = await scanner.listCameras();
-  if (cameras.length < 2) return;
+  // Disabled for the duration of the switch - Camera.switchCamera() itself
+  // guards against overlapping calls, but disabling gives immediate visual
+  // feedback and avoids queuing up taps against a device that's mid-switch.
+  switchCameraButton.disabled = true;
+  try {
+    const cameras = await scanner.listCameras();
+    if (cameras.length < 2) return;
 
-  cameraIndex = (cameraIndex + 1) % cameras.length;
-  await scanner.switchCamera(cameras[cameraIndex].deviceId);
+    cameraIndex = (cameraIndex + 1) % cameras.length;
+    await scanner.switchCamera(cameras[cameraIndex].deviceId);
+  } finally {
+    switchCameraButton.disabled = false;
+  }
 });
 
 window.addEventListener('beforeunload', () => {

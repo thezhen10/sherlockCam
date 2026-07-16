@@ -97,9 +97,21 @@ export class CameraScanner extends EventEmitter<ScannerEventMap> {
    * takes effect immediately and persists across future restarts (e.g. the
    * automatic pause/resume around backgrounding the tab), taking over from
    * the default back-camera selection. No restart needed.
+   *
+   * Unlike start(), a failure here does not move the scanner into the
+   * 'error' state or interrupt scanning - Camera.switchCamera() keeps the
+   * previous camera running if the new one can't be opened, so the session
+   * carries on uninterrupted. The failure is still surfaced via the 'error'
+   * event for diagnostics/UI, but is swallowed rather than rethrown, so
+   * callers don't need their own try/catch just to avoid an unhandled
+   * rejection.
    */
   async switchCamera(deviceId: string): Promise<void> {
-    await this.camera.switchCamera(deviceId);
+    try {
+      await this.camera.switchCamera(deviceId);
+    } catch (error) {
+      this.emitError(error);
+    }
   }
 
   /** Replace the per-frame preprocessing options. Takes effect on the next detection tick - no restart needed. */
