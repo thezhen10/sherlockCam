@@ -33,6 +33,23 @@ const DEFAULT_CONSTRAINTS: MediaTrackConstraints = {
   height: { ideal: 1080 },
 };
 
+// getUserMedia can throw NotReadableError when a device was very recently
+// stopped (e.g. by switchCamera()'s own previous call) and the OS/driver
+// hasn't finished releasing it yet - common with USB webcams on Windows,
+// where hardware teardown noticeably lags behind track.stop() returning.
+// This is usually transient, not a real failure, so it's worth a few retries
+// before surfacing it as an actual error.
+const GET_USER_MEDIA_MAX_ATTEMPTS = 4;
+const GET_USER_MEDIA_RETRY_DELAY_MS = 300;
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isNotReadableError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'NotReadableError';
+}
+
 /**
  * Thin wrapper around getUserMedia with the mobile-specific behavior a
  * scanner needs: back camera by default, inline (non-fullscreen) playback on
@@ -193,10 +210,7 @@ export class Camera {
    * tuning only needs to be added in one place).
    */
   private async acquireStream(): Promise<void> {
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      video: this.buildConstraints(),
-      audio: false,
-    });
+    this.stream = await this.getUserMediaWithRetry();
 
     this.videoElement.srcObject = this.stream;
     // Required on iOS: without playsInline the video is forced fullscreen;
@@ -215,6 +229,28 @@ export class Camera {
     }
     if (this.torch) {
       await this.applyTrackConstraint({ torch: true }, 'torch');
+    }
+  }
+
+  /**
+   * Retries on NotReadableError (see the comment on GET_USER_MEDIA_MAX_ATTEMPTS)
+   * with a short, increasing delay between attempts, so a device that's mid-release
+   * from a just-stopped previous stream gets a chance to actually free up before
+   * this gives up. Any other error (permission denied, no matching device, etc.)
+   * is a real failure and is thrown immediately, without retrying.
+   */
+  private async getUserMediaWithRetry(): Promise<MediaStream> {
+    const constraints = this.buildConstraints();
+    let attempt = 0;
+
+    while (true) {
+      attempt += 1;
+      try {
+        return await navigator.mediaDevices.getUserMedia({ video: constraints, audio: false });
+      } catch (error) {
+        if (!isNotReadableError(error) || attempt >= GET_USER_MEDIA_MAX_ATTEMPTS) throw error;
+        await delay(attempt * GET_USER_MEDIA_RETRY_DELAY_MS);
+      }
     }
   }
 
