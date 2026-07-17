@@ -118,35 +118,54 @@ export class Camera {
    * preferences are - see buildConstraints(). If called before the camera
    * has ever started, this just records the preference for the next start().
    *
-   * Acquires the new device's stream *before* releasing the old one, rather
-   * than stopping-then-reacquiring: two physically distinct devices (e.g. a
-   * laptop's built-in webcam plus a USB one) can safely both be briefly open
-   * at once, whereas stopping the old track first and immediately requesting
-   * the new one races the OS/driver's release of the old device - if the new
-   * request lands before that finishes, it throws
-   * `NotReadableError: Could not start video source`. This ordering also
-   * means a failed switch leaves the previous camera running untouched
-   * instead of going dead. Throws (propagating that same error) if the new
-   * device can't be opened; overlapping calls (e.g. the toggle button tapped
-   * twice before the first switch settles) are ignored rather than racing
-   * each other.
+   * Fully stops the current stream *before* requesting the new device,
+   * rather than briefly holding both open. On mobile, front/back cameras
+   * typically share a single hardware/ISP pipeline, and the OS only permits
+   * one active camera session at a time - requesting a second device while
+   * the first is still streaming is rejected outright there, not just
+   * racy. (This differs from two genuinely separate desktop webcams - e.g.
+   * a laptop's built-in one plus a USB one - which really can both be open
+   * briefly; but stop-then-acquire is the ordering that works everywhere,
+   * so it's the one used unconditionally.) getUserMediaWithRetry()'s
+   * retry/backoff still absorbs the desktop-side release-lag race this
+   * ordering reintroduces (briefly requesting a device that hasn't fully
+   * finished releasing yet).
+   *
+   * If the new device still fails to open after retrying, falls back to
+   * reopening the previous device so the camera doesn't go dead, then
+   * rethrows the original error - the fallback's own failure, if any, is
+   * swallowed in favor of surfacing that original error. Overlapping calls
+   * (e.g. the toggle button tapped twice before the first switch settles)
+   * are ignored rather than racing each other.
    */
   async switchCamera(deviceId: string): Promise<void> {
     if (this.isSwitchingCamera) return;
     this.isSwitchingCamera = true;
 
-    const previousDeviceId = this.activeDeviceId;
-    const previousStream = this.stream;
-    this.activeDeviceId = deviceId;
-
     try {
-      if (!previousStream) return;
+      if (!this.stream) {
+        this.activeDeviceId = deviceId;
+        return;
+      }
 
-      await this.acquireStream();
-      previousStream.getTracks().forEach((track) => track.stop());
-    } catch (error) {
-      this.activeDeviceId = previousDeviceId;
-      throw error;
+      const previousDeviceId = this.activeDeviceId;
+      this.stream.getTracks().forEach((track) => track.stop());
+      this.stream = null;
+      this.videoElement.srcObject = null;
+
+      this.activeDeviceId = deviceId;
+      try {
+        await this.acquireStream();
+      } catch (error) {
+        this.activeDeviceId = previousDeviceId;
+        try {
+          await this.acquireStream();
+        } catch {
+          // Fallback also failed - the camera is left stopped. Swallowed in
+          // favor of rethrowing the original (more relevant) error below.
+        }
+        throw error;
+      }
     } finally {
       this.isSwitchingCamera = false;
     }

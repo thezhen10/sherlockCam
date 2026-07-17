@@ -99,10 +99,13 @@ export class CameraScanner extends EventEmitter<ScannerEventMap> {
    * the default back-camera selection. No restart needed.
    *
    * Unlike start(), a failure here does not move the scanner into the
-   * 'error' state or interrupt scanning - Camera.switchCamera() keeps the
-   * previous camera running if the new one can't be opened, so the session
-   * carries on uninterrupted. The failure is still surfaced via the 'error'
-   * event for diagnostics/UI, but is swallowed rather than rethrown, so
+   * 'error' state. If the new device can't be opened, Camera.switchCamera()
+   * falls back to reopening the previous device, so in the common case the
+   * session carries on uninterrupted on the camera it was already using. In
+   * the rare case that fallback also fails, the camera is left stopped -
+   * camera.isRunning becomes false and detection ticks simply no-op until
+   * start() is called again. Either way, the failure is surfaced via the
+   * 'error' event for diagnostics/UI, but swallowed rather than rethrown, so
    * callers don't need their own try/catch just to avoid an unhandled
    * rejection.
    */
