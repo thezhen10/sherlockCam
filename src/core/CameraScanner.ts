@@ -12,7 +12,7 @@ import type {
   ScannerState,
 } from './types';
 
-const DEFAULT_DETECTION_INTERVAL_MS = 400;
+const DEFAULT_DETECTION_INTERVAL_MS = 50;
 
 /**
  * The public entry point of the library. Orchestrates the camera, the frame
@@ -199,7 +199,20 @@ export class CameraScanner extends EventEmitter<ScannerEventMap> {
   }
 
   private async runDetectionTick(): Promise<void> {
-    if (this.state !== 'scanning' || this.isDetecting || !this.camera.isRunning) return;
+    if (this.state !== 'scanning' || this.isDetecting) return;
+
+    // The camera can be transiently not-running while still logically
+    // 'scanning' - e.g. mid-switchCamera(), which briefly sets the stream to
+    // null between releasing the old device and acquiring the new one. This
+    // must reschedule rather than just return: scheduleNextDetection() is
+    // only ever called from within this method's own finally block (or
+    // dismiss()/start()), so returning here without it would permanently
+    // break the self-perpetuating timer chain - the scanner would silently
+    // stop ticking forever, even once the camera becomes ready again.
+    if (!this.camera.isRunning) {
+      this.scheduleNextDetection();
+      return;
+    }
 
     this.isDetecting = true;
     try {
