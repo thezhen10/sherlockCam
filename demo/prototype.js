@@ -85,6 +85,11 @@ const ROI_EDGE_FRACTION = 0.3;
 const ROI_MIN_EDGE_PX = 300;
 const ROI_MAX_EDGE_PX = 500;
 
+// Multiplier applied to the ROI's pixel dimensions when capturing the
+// modal snapshot, so the player sees surrounding context rather than
+// exactly the tight detection crop. 1 = same as the detection ROI.
+const SNAPSHOT_ROI_MULTIPLIER = 1.25;
+
 /**
  * Sizes a centered square off the smaller on-screen viewfinder dimension, then
  * pushes the matching native-frame fractions into the scanner. Both the guide
@@ -121,16 +126,42 @@ videoElement.addEventListener('loadedmetadata', syncRegionOfInterest);
 videoElement.addEventListener('resize', syncRegionOfInterest);
 window.addEventListener('resize', syncRegionOfInterest);
 
-// Caches the most recent frame handed to detectors, so the detect handler
-// below can show exactly the frame that triggered a match. 'frame' fires
-// every tick, immediately before that tick's detectors run - since a new
-// grab() never happens again until the modal is dismissed (state moves to
-// 'awaiting_dismissal', which blocks scheduling the next tick), this is
-// guaranteed to still be the correct frame by the time 'detect' fires.
-let latestFrame = null;
-scanner.on('frame', (frame) => {
-  latestFrame = frame;
-});
+// Captures a wider crop around the ROI for the modal snapshot. 'frame' fires
+// every tick, synchronously before that tick's detectors run - drawing from
+// videoElement here samples the same video instant FrameGrabber.grab() just
+// used. Since no new grab() happens until the modal is dismissed, this is
+// still the correct snapshot by the time 'detect' fires.
+const snapshotCanvas = document.createElement('canvas');
+const snapshotCtx = snapshotCanvas.getContext('2d');
+let latestSnapshot = null;
+
+function captureSnapshot() {
+  const { videoWidth, videoHeight } = videoElement;
+  if (!videoWidth || !videoHeight) return;
+
+  const { widthFraction, heightFraction } = scanner.regionOfInterest;
+  const roiWidth = videoWidth * widthFraction;
+  const roiHeight = videoHeight * heightFraction;
+
+  // Scale the ROI box up, then clamp to the video's actual bounds so a
+  // large multiplier (or an already-large ROI) can't request coordinates
+  // outside the real frame.
+  const paddedWidth = Math.min(roiWidth * SNAPSHOT_ROI_MULTIPLIER, videoWidth);
+  const paddedHeight = Math.min(roiHeight * SNAPSHOT_ROI_MULTIPLIER, videoHeight);
+  const paddedX = Math.max(0, (videoWidth - paddedWidth) / 2);
+  const paddedY = Math.max(0, (videoHeight - paddedHeight) / 2);
+
+  snapshotCanvas.width = paddedWidth;
+  snapshotCanvas.height = paddedHeight;
+  snapshotCtx.drawImage(
+    videoElement,
+    paddedX, paddedY, paddedWidth, paddedHeight,
+    0, 0, paddedWidth, paddedHeight,
+  );
+  latestSnapshot = snapshotCanvas;
+}
+
+scanner.on('frame', captureSnapshot);
 
 // Normalizes whichever ScanResult variant fired, since a match can come from
 // any detector (barcode, character-classifier, or OCR if it's ever added back).
@@ -186,7 +217,8 @@ modalCard.id = 'callback-card';
 const modalTitle = document.createElement('h2');
 modalTitle.textContent = 'Target found!';
 
-// Shows the exact frame that triggered the match - see renderFrameSnapshot().
+// Shows the wider snapshot around the ROI that triggered the match - see
+// renderFrameSnapshot() and captureSnapshot().
 const modalImage = document.createElement('canvas');
 modalImage.id = 'callback-image';
 
@@ -202,13 +234,11 @@ modalDismissButton.addEventListener('click', () => {
 modalCard.append(modalTitle, modalImage, modalBody, modalDismissButton);
 callbackModal.appendChild(modalCard);
 
-// Draws a DetectorFrame onto the modal's canvas. putImageData is synchronous
-// and needs no encoding step, unlike an <img>'s data URL - appropriate here
-// since this is a live DOM canvas, not a stored/serialized image.
-function renderFrameSnapshot(frame) {
-  modalImage.width = frame.width;
-  modalImage.height = frame.height;
-  modalImage.getContext('2d').putImageData(frame.rawImageData, 0, 0);
+// Draws the wider snapshot canvas onto the modal's display canvas.
+function renderFrameSnapshot(snapshot) {
+  modalImage.width = snapshot.width;
+  modalImage.height = snapshot.height;
+  modalImage.getContext('2d').drawImage(snapshot, 0, 0);
 }
 
 function showBlockingModal(text) {
@@ -248,7 +278,7 @@ scanner.on('detect', (result) => {
 
   foundTargets.add(matchedKey);
   const message = postMessage('match', `Target found: ${matchedKey} (${value})`);
-  renderFrameSnapshot(latestFrame);
+  renderFrameSnapshot(latestSnapshot);
   showBlockingModal(message.text);
 
   if (foundTargets.size === Object.keys(targets).length) {
