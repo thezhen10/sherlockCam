@@ -121,6 +121,17 @@ videoElement.addEventListener('loadedmetadata', syncRegionOfInterest);
 videoElement.addEventListener('resize', syncRegionOfInterest);
 window.addEventListener('resize', syncRegionOfInterest);
 
+// Caches the most recent frame handed to detectors, so the detect handler
+// below can show exactly the frame that triggered a match. 'frame' fires
+// every tick, immediately before that tick's detectors run - since a new
+// grab() never happens again until the modal is dismissed (state moves to
+// 'awaiting_dismissal', which blocks scheduling the next tick), this is
+// guaranteed to still be the correct frame by the time 'detect' fires.
+let latestFrame = null;
+scanner.on('frame', (frame) => {
+  latestFrame = frame;
+});
+
 // Normalizes whichever ScanResult variant fired, since a match can come from
 // any detector (barcode, character-classifier, or OCR if it's ever added back).
 function extractScanValue(result) {
@@ -175,6 +186,10 @@ modalCard.id = 'callback-card';
 const modalTitle = document.createElement('h2');
 modalTitle.textContent = 'Target found!';
 
+// Shows the exact frame that triggered the match - see renderFrameSnapshot().
+const modalImage = document.createElement('canvas');
+modalImage.id = 'callback-image';
+
 const modalBody = document.createElement('p');
 
 const modalDismissButton = document.createElement('button');
@@ -184,8 +199,17 @@ modalDismissButton.addEventListener('click', () => {
   scanner.dismiss();
 });
 
-modalCard.append(modalTitle, modalBody, modalDismissButton);
+modalCard.append(modalTitle, modalImage, modalBody, modalDismissButton);
 callbackModal.appendChild(modalCard);
+
+// Draws a DetectorFrame onto the modal's canvas. putImageData is synchronous
+// and needs no encoding step, unlike an <img>'s data URL - appropriate here
+// since this is a live DOM canvas, not a stored/serialized image.
+function renderFrameSnapshot(frame) {
+  modalImage.width = frame.width;
+  modalImage.height = frame.height;
+  modalImage.getContext('2d').putImageData(frame.rawImageData, 0, 0);
+}
 
 function showBlockingModal(text) {
   modalBody.textContent = text;
@@ -224,6 +248,7 @@ scanner.on('detect', (result) => {
 
   foundTargets.add(matchedKey);
   const message = postMessage('match', `Target found: ${matchedKey} (${value})`);
+  renderFrameSnapshot(latestFrame);
   showBlockingModal(message.text);
 
   if (foundTargets.size === Object.keys(targets).length) {
